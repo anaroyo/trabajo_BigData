@@ -1,0 +1,27 @@
+---
+title: Análisis de los 10 álbumes musicales de Taylor Swift
+image: imagenes/taylorswift.jpg
+about:
+  template: trestles
+  image-width: 19em
+  image-shape: rounded
+  links:
+    - icon: envelope
+      text: e-mail
+      url: "mailto:royo3@alumni.uv.es"
+    - icon: github
+      text: Github
+      href: https://github.com/anaroyo
+---
+        
+Hola, soy Ana Royo Sánchez.
+      
+Esta web sirve para presentar el trabajo final individual para la asignatura "Programación y manejo de datos en la era Del Big Data", optativa de GECO en la Facultad de Economía de la Universitat de València.
+
+La web de la asignatura está [aquí](https://perezp44.github.io/intro-ds-23-24-web/){target="_blank"} y los trabajos de mis compañeros de curso puedes verlos [aquí](https://perezp44.github.io/intro-ds-23-24-web/05-trabajos-estudiantes.html){target="_blank"}.
+
+
+Mi trabajo lleva por título: "Análisis de los 10 álbumes de Taylor Swift". El objetivo es realizar un análisis detallado de los álbumes musicales de la artista, explorando su evolución a lo largo de las distintas eras y destacando elementos significativos en su producción y contenido.
+
+
+El trabajo puede verse [aquí](my_trabajo_BigData.html).

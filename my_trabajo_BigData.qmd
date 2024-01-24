@@ -1,0 +1,641 @@
+---
+title: "ANÁLISIS DE LOS 10 ÁLBUMES DE TAYLOR SWIFT"
+description: |
+  Un repaso por las distintas eras de la artista
+author:
+  - name: Ana Royo Sánchez
+    affiliation: Universitat de València
+    affiliation-url: https://www.uv.es
+date: 2024-01-24
+categories: [trabajo BigData, musica, Taylor Swift]
+image: "./imagenes/imagen_01.png"
+title-block-banner: true
+title-block-banner-color: "#FFE7FC"
+toc: true
+toc-location: left
+toc-depth: 3
+smooth-scroll: true
+format: 
+  html:
+    backgroundcolor: "#FFE7FC"
+    embed-resources: true
+    link-external-newwindow: true
+    #css: ./assets/my_css_file.css
+code-tools: true
+code-link: true
+---
+
+## Introducción
+
+En el panorama musical contemporáneo, pocas figuras han ejercido un impacto tan profundo y sostenido como **Taylor Swift**. Desde su debut en la escena musical hasta la actualidad, ha evolucionado de manera notable no solo como artista, sino también como narradora magistral de historias a través de su música. Taylor lleva casi **dos décadas de carrera musical**, la cual ha dividido en **10 eras distintas** (cada una correspondiente a un álbum específico) que recogen diferentes sonidos, sentimientos y momentos vitales.
+
+![Ilustración de las 10 eras de Taylor Swift](./imagenes/eras.jpg)
+---
+
+## Datos
+
+### Obtenemos los datos
+
+
+::: {.panel-tabset}
+
+## Datos
+
+Los datos que vamos a utilizar para el trabajo han sido extraídos de [Kaggle](https://www.kaggle.com/), una plataforma web que reúne la comunidad Data Science más grande del mundo. El conjunto de datos consta de datos de la API de Spotify para todos sus álbumes.
+
+## Paquetes
+
+```{r}
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(rio)
+library(scales)
+library(stringr)
+library(tidytext)
+library(lubridate)
+library(gganimate)
+library(gt)
+library(gtExtras)
+library(RColorBrewer)
+```
+
+:::
+
+Los datos se pueden cargar en la memoria de R/RStudio de esta forma:
+
+```{r}
+archivo_destino <- here::here("datos", "taylor_swift_spotify.xlsx")
+spotify <- rio::import(archivo_destino)
+
+lyrics <- rio::import(here::here("datos", "taylor_swift_lyrics.xlsx"))
+
+concerts <- rio::import(here::here("datos", "taylor_swift_concerts.xlsx"))
+```
+
+Hemos importado tres conjuntos de datos para analizar. El primer dataset contiene observaciones sobre un conjunto de `r nrow(spotify)` canciones. Disponemos de `r ncol(spotify)` variables a analizar sobre dichas canciones. En el segundo, lo que encontramos son las letras de las canciones. El último dataset contiene información sobre las giras de conciertos.
+
+Por tanto, en primer lugar realizaremos un análisis sobre las propias canciones y los álbumes a los que pertenecen, para posteriormente centrarnos en los *lyrics* y lo que pretende transmitir Taylor. Terminaremos con un pequeño análisis sobre la recaudación de cada *tour*.
+
+---
+
+### Arreglamos y transformamos los datos
+
+Para poder analizar los datos y hacer gráficos chulos, antes es necesario arreglar dichos datos.
+
+En primer lugar, elegimos las columnas con las que queremos trabajar, en este caso queremos: nombre de la canción, álbum, fecha, duración, popularidad y todas las características de las canciones como bailabilidad, vivacidad, volumen, etc.
+
+Después, para que resulte más fácil saber de qué álbum estamos hablando, puesto que sabemos que Taylor ha regrabado algunos de sus álbumes (Taylor's Version) y ha lanzado algunas ediciones diferentes, como versiones deluxe y también álbumes de conciertos, vamos a crear una nueva columna con el nombre del álbum independientemente de la versión.
+
+Por último, ya que cada era tiene una estética diferente, vamos a asignar a cada uno de los álbumes su color característico para que se vea posteriormente en los gráficos.
+
+```{r}
+spotify <- spotify %>%
+  select('name', 'album', 'release_date', 'track_number', 'acousticness', 'danceability', 'energy', 'instrumentalness', 'liveness', 'loudness', 'speechiness', 'tempo', 'valence', 'popularity', 'duration_ms')
+
+spotify <- spotify %>%
+  mutate(album_new = case_when(str_detect(album, "Speak Now") ~ "Speak Now",
+                               str_detect(album, "Midnights") ~ "Midnights",
+                               str_detect(album, "Red") ~ "Red",
+                               str_detect(album, "Fearless") ~ "Fearless",
+                               str_detect(album, "evermore") ~ "evermore",
+                               str_detect(album, "folklore") ~ "folklore",
+                               str_detect(album, "Lover") ~ "Lover",
+                               str_detect(album, "reputation") ~ "reputation",
+                               str_detect(album, "1989") ~ "1989",
+                               str_detect(album, "Taylor Swift") ~ "Taylor Swift",
+                               TRUE ~ 'Others'))
+
+spotify <- spotify[!grepl("Live|Stadium|session", c(spotify$album)),]
+
+#- creamos la paleta de colores de sus álbumes
+colors <- c("Taylor Swift" = "seagreen3",
+            "Fearless" = "goldenrod1",
+            "Speak Now" = "orchid3",
+            "Red" = "red3",
+            "1989"= "skyblue3",
+            "reputation" = "gray15",
+            "Lover" = "hotpink",
+            "folklore" = "lavenderblush4",
+            "evermore"= "burlywood",
+            "Midnights" = "midnightblue",
+            "Others" = "salmon1" )
+```
+
+---
+
+## Análisis de canciones
+
+### Canciones más populares de su discografía
+
+
+Comenzamos nuestro análisis viendo cuáles son las canciones más populares de toda la discografía de Taylor Swift. En la siguiente tabla se presenta un resumen del **TOP 10 canciones**. Cada entrada incluye el nombre de la canción, el álbum al que pertenece y su nivel de popularidad en la plataforma de Spotify.
+
+Esta clasificación proporciona una instantánea de sus canciones más aclamadas, destacando éxitos notables que han resonado significativamente con el público. La columna "Popularidad" refleja la calificación relativa de cada canción en función de su recepción y reproducciones en Spotify.
+
+
+```{r}
+popular_songs <- spotify %>%
+  arrange(desc(popularity)) %>% 
+  slice(1:10) %>% 
+  select(name, album_new, popularity)
+colnames(popular_songs) <- c("Nombre de la canción", "Álbum", "Popularidad")
+
+popular_songs_table <- knitr::kable(popular_songs, format = "html", row.names = FALSE) %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  add_header_above(c("TOP 10 CANCIONES MÁS POPULARES DE TAYLOR SWIFT" = 3), font_size = 20) %>%
+  kableExtra::column_spec(c(1, 2, 3), width = "60%")
+
+popular_songs_table
+```
+
+Aquí tenéis la canción que ocupa la primera posición, por si quereis escucharla mientras seguís leyendo el trabajo ;)
+
+```{r}
+#| code-fold: true
+library("vembedr")
+embed_url("https://www.youtube.com/watch?v=ic8j13piAhQ")
+```
+
+---
+
+### Popularidad de las canciones por álbum
+
+
+En el siguiente **gráfico de cajas (boxplot)**, exploramos la distribución de la popularidad de las canciones de Taylor Swift a lo largo del tiempo, organizadas por álbum. Cada caja representa la variabilidad intercuartílica (IQR) de la popularidad de las canciones dentro de un álbum específico, mientras que la línea central en cada caja representa la mediana.
+
+Observamos cómo la popularidad de las canciones ha evolucionado a lo largo de los distintos lanzamientos, reflejando la diversidad en el recibimiento de cada álbum. La paleta de colores única asignada a cada álbum facilita la identificación visual de las tendencias y diferencias en la distribución. Al analizar este gráfico, podemos diferenciar patrones y momentos destacados en la carrera musical de Taylor Swift.
+
+
+```{r}
+spotify$album_new <- factor (spotify$album_new, levels = unique(spotify$album_new[order(spotify$release_date)]))  #- ordenamos por fecha de lanzamiento
+
+ggplot(spotify, aes(x = release_date, y = popularity)) + 
+  geom_boxplot(aes(color = album_new), outlier.shape = NA) +
+  geom_point(aes(color = album_new), position = position_jitter(width = 0.2), alpha = 0.5) +
+  scale_color_manual(values = colors) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(vjust = 0.5, hjust = 1),
+        axis.title = element_text(size = 10),
+        plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+        plot.caption = element_text(size = 8),
+        legend.position = "bottom",
+        legend.box.background = element_rect(color = "black", size = 0.5),
+        panel.background = element_rect(fill = "honeydew", color = "white", linetype = "solid"),
+        plot.margin = margin(10, 10, 10, 10)) +
+  labs(title = "Distribución de Popularidad de las Canciones por Álbum",
+       x = "Fecha de lanzamiento",
+       y = "Popularidad",
+       color = "Álbum",
+       caption = "Fuente: Datos de Spotify") +
+  geom_hline(yintercept = median(spotify$popularity), linetype = "dashed", color = "black", size = 0.5) +
+  geom_text(data = subset(spotify, !duplicated(album_new, fromLast = TRUE)),
+            aes(x = release_date, y = popularity, label = album_new),
+            color = "black", vjust = -0.5, hjust = -0.2, size = 2.5)
+```
+
+Podemos observar que la popularidad de Taylor ha aumentado considerablemente desde *1989* hasta *Lover*. Tras este álbum, vemos una pequeña caída que puede explicarse por su cambio de estilo en los dos siguientes álbumes: *folklore* y *evermore*. Sin embargo, después de eso mantiene un nivel de popularidad bastante estable.
+
+---
+
+### Evolución temporal de la popularidad
+
+
+Para que sea más visual y más fácil distinguir cuál ha sido realmente la evolución de la popularidad de las canciones de Taylor, creamos el siguiente **gráfico animado**. Cada línea representa la trayectoria de popularidad de las canciones de cada álbum a medida que transcurren los años.
+
+
+```{r}
+spotify_filtered <- spotify %>%
+  filter(album_new != "Taylor Swift",
+         album_new != "Midnights")
+
+p <- ggplot(spotify_filtered, aes(x = release_date, y = popularity, color = album_new)) +
+  geom_line(size = 1) +
+  labs(title = "Evolución Temporal de la Popularidad por Álbum",
+       x = "Año",
+       y = "Popularidad",
+       color = "Álbum") +
+  theme_minimal() + 
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(hjust = 1, size = 8),
+        plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+        axis.title.x = element_text(size = 10, hjust = 1, vjust = 0),
+        axis.title.y = element_text(size = 10, hjust = 0.5, vjust = 1),
+        legend.title = element_text(face = "bold"),
+        panel.grid.major = element_line(colour = "gray87", linetype = "dashed"),
+        panel.background = element_rect(fill = "honeydew"),
+        panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 9, colour = "gray17")) + 
+  scale_color_manual(values = colors) +
+  geom_text(aes(label = album_new), nudge_x = 0.5, nudge_y = 0.5, hjust = 0)
+
+#- animamos el gráfico
+p_animated <- p + transition_reveal(release_date) +
+  enter_fade() + 
+  exit_fade()
+
+animate(p_animated, nframes = 200, fps = 20)
+```
+
+---
+
+### Duración de las canciones por álbum
+
+
+El siguiente **gráfico de barras** muestra la duración promedio de las canciones de Taylor Swift en función de los distintos álbumes, los cuales aparecen ordenados de mayor a menor duración. Basándonos en un análisis de **426 canciones**, las agrupamos por álbum y obtenemos el promedio de duración en minutos para cada uno de ellos.
+
+Como veremos a continuación, el álbum *Speak Now* destaca con la duración promedio más larga, de 4.71 minutos por canción. En contraste, el álbum *Lover* se destaca por su estilo más conciso y directo ya que sus canciones presentan una duración promedio más corta, concretamente de 3,44 minutos por canción.
+
+
+```{r}
+average_duration_by_album <- spotify %>%
+  group_by(album_new) %>%
+  summarise(average_duration = mean(duration_ms))
+
+average_duration_by_album$average_duration_minutes <- average_duration_by_album$average_duration / 60000  #- pasamos la duración media a minutos
+
+ggplot(average_duration_by_album, aes(x = reorder(album_new, -average_duration), y = average_duration_minutes, fill = album_new)) +
+  geom_bar(stat = "identity", color = "black", size = 0.5, position = "stack") +
+  geom_text(aes(label = sprintf("%.2f", average_duration_minutes)),
+            position = position_stack(vjust = 0.5), size = 3, color = "black") +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "none",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(color = "black")) +
+  labs(title = "Duración Media de las Canciones por Álbum",
+       subtitle = "Basado en 426 canciones de Taylor Swift",
+       x = "Álbum",
+       y = "Duración promedio (minutos)",
+       caption = "Fuente: Datos de Spotify") +
+  theme(plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+        plot.subtitle = element_text(size = 10, hjust = 0.5),
+        plot.caption = element_text(size = 8, hjust = 0.5),
+        axis.title.y = element_text(size = 10, vjust = 1),
+        axis.title.x = element_text(size = 10),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8, vjust = -0.5, color = "black"),
+        axis.line.x = element_line(color = "black", linewidth = 0.5),
+        plot.margin = margin(10, 10, 10, 10))
+```
+
+---
+
+### Características musicales de los álbumes
+
+
+En este conjunto de visualizaciones exploramos diversas características musicales de las canciones de Taylor Swift a lo largo de sus álbumes. Cada gráfico proporciona una perspectiva única sobre cómo estas características han evolucionado a lo largo de su carrera. Las características analizadas incluyen:
+
+- **Danceability**: Muestra la variabilidad en la capacidad de las canciones para inspirar movimiento y baile. Valores más altos indican canciones más propicias para el baile.
+
+- **Energy**: Representa la intensidad y actividad percibida en las canciones. Un mayor valor sugiere canciones más enérgicas.
+
+- **Acousticness**: Explora la presencia de elementos acústicos en las canciones. Valores altos indican un sonido más cercano a lo acústico.
+
+- **Loudness**: Refleja el volumen general de las canciones. Valores más altos indican canciones más fuertes.
+
+
+::: {.panel-tabset}
+
+## Danceability
+
+```{r}
+#| code-fold: true
+plot_danceability <- ggplot(spotify, aes(x = album_new, y = danceability, fill = album_new)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +  #- ajustamos la transparencia para mejor visualización
+  geom_boxplot(width = 0.2, fill = "white", color = "black", outlier.shape = NA) +  #- eliminamos outliers en el boxplot
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(title = "Variación de Danceability entre Álbumes",
+       subtitle = "Comparación de la bailabilidad a lo largo de las eras",
+       x = "Álbum",
+       y = "Danceability",
+       fill = "Álbum",
+       caption = "Fuente: Datos de Spotify") +
+  theme(plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+        plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray"),
+        plot.caption = element_text(size = 8),
+        legend.position = "none",
+        axis.title.y = element_text(size = 10, vjust = 1),
+        axis.title.x = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, size = 8, hjust = 1, vjust = 1),
+        axis.text.y = element_text(size = 8, vjust = -0.5, color = "black"),
+        panel.background = element_rect(fill = "honeydew", color = "white", linetype = "solid"),
+        plot.margin = margin(10, 10, 10, 10))
+
+print(plot_danceability)
+```
+
+## Energy
+
+```{r}
+#| code-fold: true
+plot_energy <- ggplot(spotify, aes(x = album_new, y = energy, fill = album_new)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +
+  geom_boxplot(width = 0.2, fill = "white", color = "black", outlier.shape = NA) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(title = "Variación de Energy entre Álbumes",
+       subtitle = "Comparación de la energía a lo largo de las eras",
+       x = "Álbum",
+       y = "Energy",
+       fill = "Álbum",
+       caption = "Fuente: Datos de Spotify") +
+  theme(plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+        plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray"),
+        plot.caption = element_text(size = 8),
+        legend.position = "none",
+        axis.title.y = element_text(size = 10, vjust = 1),
+        axis.title.x = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, size = 8),
+        axis.text.y = element_text(size = 8, vjust = -0.5, color = "black"),
+        panel.background = element_rect(fill = "honeydew", color = "white", linetype = "solid"),
+        plot.margin = margin(10, 10, 10, 10))
+
+print(plot_energy)
+```
+
+## Acousticness
+
+```{r}
+#| code-fold: true
+plot_acousticness <- ggplot(spotify, aes(x = album_new, y = acousticness, fill = album_new)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +
+  geom_boxplot(width = 0.2, fill = "white", color = "black", outlier.shape = NA) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(title = "Variación de Acousticness entre Álbumes",
+       subtitle = "Comparación de la acústica a lo largo de las eras",
+       x = "Álbum",
+       y = "Acousticness",
+       fill = "Álbum",
+       caption = "Fuente: Datos de Spotify") +
+  theme(plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+        plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray"),
+        plot.caption = element_text(size = 8),
+        legend.position = "none",
+        axis.title.y = element_text(size = 10, vjust = 1),
+        axis.title.x = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, size = 8),
+        axis.text.y = element_text(size = 8, vjust = -0.5, color = "black"),
+        panel.background = element_rect(fill = "honeydew", color = "white", linetype = "solid"),
+        plot.margin = margin(10, 10, 10, 10))
+
+print(plot_acousticness)
+```
+
+## Loudness
+
+```{r}
+#| code-fold: true
+plot_loudness <- ggplot(spotify, aes(x = album_new, y = loudness, fill = album_new)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +
+  geom_boxplot(width = 0.2, fill = "white", color = "black", outlier.shape = NA) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(title = "Variación de Loudness entre Álbumes",
+       subtitle = "Comparación del volumen a lo largo de las eras",
+       x = "Álbum",
+       y = "Loudness",
+       fill = "Álbum",
+       caption = "Fuente: Datos de Spotify") +
+  theme(plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
+        plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray"),
+        plot.caption = element_text(size = 8),
+        legend.position = "none",
+        axis.title.y = element_text(size = 10, vjust = 1),
+        axis.title.x = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, size = 8),
+        axis.text.y = element_text(size = 8, vjust = -0.5, color = "black"),
+        panel.background = element_rect(fill = "honeydew", color = "white", linetype = "solid"),
+        plot.margin = margin(10, 10, 10, 10))
+
+print(plot_loudness)
+```
+
+:::
+
+Cada gráfico utiliza **violines y diagramas de caja** para proporcionar una visión completa de la distribución de estas características a lo largo de los álbumes. Se observa cómo estas tendencias pueden relacionarse con la evolución estilística y artística de Taylor Swift a lo largo del tiempo.
+
+---
+
+## Análisis de letras
+
+### ¿Cuáles son las palabras más repetidas?
+
+En esta sección del análisis, exploramos las letras de las canciones de Taylor Swift con el objetivo de identificar las palabras más frecuentes a lo largo de sus 10 álbumes. Realizamos un procesamiento de texto para eliminar palabras comunes y aquellas que carecen de significado propio y hacemos un recuento de las palabras restantes.
+
+El gráfico a continuación visualiza las **palabras más destacadas**, representando el número de veces que aparecen en las letras de las canciones. Cada barra representa una palabra, y la altura de la barra indica la frecuencia de esa palabra en las letras. Las palabras están ordenadas de mayor a menor frecuencia.
+
+
+```{r}
+tay_tok <- lyrics %>%
+  unnest_tokens(word, lyric)
+
+tidy_taylor <- tay_tok %>%
+  anti_join(stop_words) #- descartamos palabras no significativas
+
+top_words <- tidy_taylor %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 70,
+         word != "di",
+         word != "ooh",
+         word != "ey") %>%
+  mutate(word = factor(word, levels = rev(unique(word))))
+
+word_plot <- ggplot(top_words, aes(word, n, fill = word)) +
+  geom_col(color = "black", linewidth = 0.5) +
+  geom_text(aes(label = word), position = position_stack(vjust = 0.8), color = "white", size = 5) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal() +
+  labs(title = "Palabras Frecuentes en las Letras de Taylor Swift",
+       subtitle = "Top 8 palabras más repetidas",
+       x = "",
+       y = "Número de veces mencionada") +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 10, color = "gray"),
+    panel.grid.major.y = element_line(color = "gray", size = 0.2, linetype = "dashed"),
+    panel.background = element_rect(fill = "honeydew", color = "white", linetype = "solid"),
+    axis.text.x = element_text(size = 8, hjust = 1),
+    axis.title.x = element_text(size = 10),
+    axis.text.y = element_blank(),
+    plot.margin = margin(10, 10, 10, 10)) +
+  coord_flip()
+
+print(word_plot)
+```
+
+---
+
+### ¿Qué sentimiento predomina en cada canción?
+
+
+El siguiente gráfico visualiza el sentimiento asociado con las canciones de Taylor Swift, clasificándolas en positivas y negativas. Cada barra representa una canción, con la altura indicando el grado de sentimiento y el color diferenciando los álbumes. Las barras están ordenadas por el sentimiento, desde el más positivo hasta el más negativo. El gráfico se presenta en un formato de facetas para permitir una comparación rápida entre diversos álbumes de Taylor Swift; en este caso, para que la visualización sea más clara, se muestran solo cuatro álbumes: *Fearless*, *Speack Now*, *Red* y *1989*.
+
+
+```{r}
+tay_sentiment <- tidy_taylor %>%
+  inner_join(get_sentiments("bing")) %>% 
+  count(album, track_title, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative)
+
+albums_a_incluir <- c("Fearless", "Speak Now", "Red", "1989")
+tay_sentiment_filtrado <- tay_sentiment %>%
+  filter(album %in% albums_a_incluir)
+
+tay_order <- c("Fearless", "Speak Now", "Red", "1989")
+tay_sentiment_filtrado$album <- factor(tay_sentiment_filtrado$album, levels = tay_order)
+
+tay_sentiment_filtrado %>%
+  ggplot(aes(reorder(track_title, sentiment), sentiment, fill = album)) +
+  geom_col(width = 0.8, show.legend = FALSE) +
+  facet_wrap(~album, ncol = 2, scales = "free") +
+  scale_fill_manual(values = c("lightgoldenrod1", "orchid3", "red3", "skyblue3")) +
+  labs(x = NULL,
+       y = "Sentimiento",
+       title = "Canciones de Taylor Swift Clasificadas por Sentimientos",
+       subtitle = "Positividad o negatividad de cada canción") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, face = "bold"),
+        plot.subtitle = element_text(size = 10, hjust = 0.25, color = "gray"),
+        axis.text.y = element_text(size = 6.5, color = "grey40", angle = 0),
+        axis.title.y = element_text(hjust = 0.5, size = 7, color = "grey40", angle = 0),
+        axis.title.x =  element_text(size = 8, color = "grey40"),
+        axis.text.x = element_text(size = 6.5, color = "grey40"),
+        strip.text = element_text(size = 9, color = "grey40", face = "bold"),
+        plot.caption = element_text(size = 7.5, color = "grey40"),
+        plot.margin = margin(10, 40, 10, 10),
+        panel.background = element_rect(fill = "honeydew", color = "white", linetype = "solid")) +
+  coord_flip()
+```
+
+Cuando una barra se desliza hacia la parte negativa del gráfico, significa que las palabras utilizadas en la letra de esa canción están vinculadas a **sentimientos negativos** como tristeza, melancolía o desafío. En cambio, si la barra se eleva hacia la parte positiva, sugiere que las palabras están impregnadas de **emociones positivas** como alegría, esperanza o amor. Este enfoque visual facilita la comparación entre las canciones y permite una comprensión rápida de la evolución emocional a lo largo de dichos álbumes.
+
+Observamos que ciertas canciones destacan notablemente en este análisis. Por ejemplo, *Tell me why*, *The story of us*, *I knew you were trouble* y *Shake it off* están asociadas con sentimientos más negativos... mientras que *Hey Stephen*, *Enchanted*, *The lucky one* y *This love* destacan en la parte positiva del gráfico, por lo que podemos decir que Taylor ha usado palabras más bonitas a la hora de componer estas canciones.
+
+---
+
+## Análisis de conciertos
+
+### ¿Cuánto se ha recaudado en cada gira?
+
+
+Por último, para hacer también un pequeño ánalisis sobre las giras de conciertos asociadas a cada uno de los álbumes, se presenta el siguiente **gráfico de tarta**. Cada segmento representa una gira específica, con sus colores distintivos, y los tamaños relativos de los segmentos reflejan la recaudación acumulada de cada gira. Acompañado por etiquetas que detallan las cifras exactas, este gráfico proporciona una perspectiva clara sobre las giras más exitosas en términos de ingresos a lo largo de la carrera de Taylor Swift.
+
+::: {.panel-tabset}
+
+## Gráfico de tarta
+
+```{r}
+concerts <- concerts %>%
+  filter(revenue != "—") %>%
+  mutate(tour_album = case_when(str_detect(tour, "Fearless_Tour") ~ "Fearless", 
+                                str_detect(tour, "Reputation_Stadium_Tour") ~ "Reputation",
+                                str_detect(tour, "Speak_Now_World_Tour") ~ "Speak Now",
+                                str_detect(tour, "The_1989_World_Tour") ~ "1989",
+                                str_detect(tour, "The_Red_Tour") ~ "Red")) %>%
+  select('tour_album', 'revenue')
+
+#- limpiamos la columna 'revenue'
+concerts$revenue <- gsub(",", "", concerts$revenue)
+concerts$revenue <- gsub("\\$", "", concerts$revenue)
+
+#- convertimos la columna 'revenue' a tipo numérico
+concerts$revenue <- as.numeric(concerts$revenue)
+
+#- agrupamos por 'tour' y sumamos los ingresos
+ingresos_totales <- concerts %>%
+  group_by(tour_album) %>%
+  summarise(ingresos_totales = sum(revenue, na.rm = TRUE)) %>%
+  arrange(desc(ingresos_totales))
+
+ingresos_totales$tour_album <- reorder(ingresos_totales$tour_album, ingresos_totales$ingresos_totales)
+
+colores <- c("#FFEC8B", "#EE7AE9", "#FF6A6A", "#8EE5EE", "#C1CDC4")
+etiquetas <- scales::dollar_format()(ingresos_totales$ingresos_totales)
+
+ggplot(ingresos_totales, aes(x = "", y = ingresos_totales, fill = tour_album)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  labs(title = "Ingresos Totales por Gira de Conciertos",
+       subtitle = "Recaudación en dólares",
+       fill = NULL) +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.title = element_text(size = 11, hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray"),
+        plot.margin = margin(10, 10, 10, 10)) +
+  scale_fill_manual(values = colores) +
+  geom_text(aes(label = etiquetas), position = position_stack(vjust = 0.5), color = "white", size = 4)
+```
+
+## Tabla
+
+```{r}
+colnames(ingresos_totales) <- c("Tour", "Ingresos")
+colores <- c("#C1CDC4", "#8EE5EE", "#FF6A6A","#EE7AE9", "#FFEC8B")
+
+tabla_concerts <- gt(ingresos_totales) %>%
+  gtExtras::gt_plt_dot(column = "Ingresos", category_column = `Tour`,  
+                       max_value = NULL, palette = colores) %>%
+  gtExtras::gt_theme_nytimes() %>%
+  cols_width(`Tour` ~ px(700), 2 ~ px(150)) %>% 
+  tab_header(title = "Giras más exitosas en términos de ingresos",
+             subtitle = "Recaudación en dólares")
+
+tabla_concerts
+```
+
+:::
+
+Observamos un **incremento constante en los ingresos** desde la gira *Fearless* hasta la gira *Reputation*, que destaca como la más exitosa en términos de recaudación. Estos resultados sugieren un impacto positivo continuo en la popularidad y éxito comercial de Taylor Swift, evidenciando un aumento significativo en la demanda de sus conciertos con cada nuevo álbum lanzado.
+
+---
+
+## Conclusión
+
+¡Y así llegamos al final de este recorrido musical por el universo de Taylor Swift!
+
+Desde sus inicios con el álbum "Taylor Swift" hasta las recientes producciones de "Midnights", hemos sido testigos de la extraordinaria evolución de esta artista a lo largo de los años. Su autenticidad, versatilidad y conexión con su audiencia la han llevado a la cima de la industria musical. Y lo más emocionante es que, con Taylor, siempre hay más por venir.
+
+Lo último que sabemos de ella es que está recorriendo el mundo con su **THE ERAS TOUR**, una gira en la que pretende recoger lo mejor de cada álbum de su carrera. Y eso no es todo, puesto que también ha lanzado una película para que quien no haya podido verla en directo, lo haga a través de la gran pantalla. Os adjunto tráiler:
+
+
+```{r}
+#| code-fold: true
+library("vembedr")
+embed_url("https://www.youtube.com/watch?v=KudedLV0tP0")
+```
+
+----------------------
+
+<br>
+
+Con esto acabo mi trabajo para BigData!!🎶💖
+
+<br>
+
+----------------------
+
+<br>
+
+### Información sobre la sesión
+
+Abajo muestro mi entorno de trabajo y paquetes utilizados
+
+```{r}
+#| echo: false
+sessioninfo::session_info() %>% 
+  details::details(summary = 'current session info') 
+```
+
